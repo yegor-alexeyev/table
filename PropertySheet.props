@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <OSRM_PATH>C:\Users\Егор\Documents\osrm\osrm-backend</OSRM_PATH>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(OSRM_PATH)\include;$(OSRM_PATH)\osrm-deps\include;$(OSRM_PATH)\third_party\flatbuffers\include;$(OSRM_PATH)\third_party\variant\include</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(OSRM_PATH)\osrm-deps\lib;$(OSRM_PATH)\build\Release</AdditionalLibraryDirectories>
+      <AdditionalDependencies>osrm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="OSRM_PATH">
+      <Value>$(OSRM_PATH)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+  </ItemGroup>
+</Project>
