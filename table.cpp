@@ -192,7 +192,7 @@ int main(int argc, const char* argv[])
 
             double workDurationSum = 0;
             for (size_t i = 0; i < jobIds.size(); i++) {
-                workDurationSum += workDurationMap[jobIds[i]];
+                workDurationSum += workDurationMap.at(jobIds[i]);
             }
             outputFile << workDurationSum << '\n';
 
@@ -207,7 +207,16 @@ int main(int argc, const char* argv[])
             outputFile << std::lround(drivingTimeSumMinutes) << '\n';
 
             const double totalTimeHours = (workDurationSum + drivingTimeSumMinutes)/60.0;
-            outputFile << std::fixed << std::setprecision(1) << totalTimeHours << '\n';
+            outputFile << std::fixed << std::setprecision(1) << totalTimeHours << std::setprecision(0) << '\n';
+
+            for (size_t i = 0; i < jobIds.size(); i++) {
+                int drivingTimeFromPreviousJob = 0;
+                if (i != 0) {
+                    drivingTimeFromPreviousJob = std::lround(drivingTimeFromTo.at(jobIds[i - 1]).at(jobIds[i])* dampeningFactor / 60.0);
+                }
+                outputFile << jobIds[i] << ";" << drivingTimeFromPreviousJob << ";" << workDurationMap.at(jobIds[i]) << ";" << "\n";
+            }
+
 
         }
         else {
