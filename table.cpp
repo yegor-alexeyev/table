@@ -21,14 +21,24 @@
 enum class WorkMode {
     drive,
     workdrive,
-    result
+    result,
+    workdrivesymc
 };
 
 WorkMode parse_work_mode(const std::string& mode) {
-    if (mode != "drive" && mode != "workdrive" && mode != "result") {
-        throw std::runtime_error("Unknown mode: " + mode + ". Supported modes: drive, workdrive, result.");
+    if (mode == "drive") {
+        return WorkMode::drive;
     }
-    return mode == "drive" ? WorkMode::drive : (mode == "workdrive" ? WorkMode::workdrive : WorkMode::result);
+    if (mode == "workdrive") {
+        return WorkMode::workdrive;
+    }
+    if (mode == "result") {
+        return WorkMode::result;
+    }
+    if (mode == "workdrivesymc") {
+        return WorkMode::workdrivesymc;
+    }
+    throw std::runtime_error("Unknown mode: " + mode + ". Supported modes: drive, workdrive, result, workdrivesymc.");
 }
 
 int main(int argc, const char* argv[])
@@ -39,6 +49,7 @@ int main(int argc, const char* argv[])
         {
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT [drive | workdrive] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT result INPUT-RESULT-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
+            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT workdrivesymc [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Example: " << argv[0] << " " << "input.txt output.result.txt result input.result.txt 1.0 map_data\\germany-latest.osrm " << "\n";
             return EXIT_FAILURE;
         }
@@ -48,8 +59,7 @@ int main(int argc, const char* argv[])
         const std::string inputFilename(argv[1]);
         const std::string outputFilename(argv[2]);
 
-        std::string mode = argc < 4 ? std::string("drive") : std::string(argv[3]);
-        WorkMode work_mode = parse_work_mode(mode);
+        WorkMode work_mode = argc < 4 ? WorkMode::drive : parse_work_mode(argv[3]);
 
         int arg_offset = work_mode == WorkMode::result ? 1 : 0;
 
@@ -73,6 +83,7 @@ int main(int argc, const char* argv[])
         //std::vector<double> workDuration;
         std::vector<int> jobRowToId;
         std::unordered_map<int, double> workDurationMap;
+        std::unordered_map<int, double> score1Map;
 
 
 
@@ -84,7 +95,7 @@ int main(int argc, const char* argv[])
         std::string line;
         while (std::getline(inputFile, line)) {
             {
-                if (work_mode != WorkMode::result) {
+                if (work_mode != WorkMode::result && work_mode != WorkMode::workdrivesymc) {
                     outputFile << line << "\n";
                 }
 
@@ -119,6 +130,7 @@ int main(int argc, const char* argv[])
 
             jobRowToId.push_back(uniqueJobID);
             workDurationMap[uniqueJobID] = score2;
+            score1Map[uniqueJobID] = score1;
         }
 
 
@@ -220,26 +232,67 @@ int main(int argc, const char* argv[])
 
         }
         else {
-            for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
-                auto& durations_array = durations_matrix.values.at(indexFrom);
-                auto& durations = durations_array.get<json::Array>();
-                bool iterates_first_value = true;
-                outputFile << "D,  ";
+            if (work_mode == WorkMode::workdrivesymc) {
+                outputFile << "NAME: " << outputFilename << std::endl;
+                outputFile << "COMMENT : based on input from "  << inputFilename << std::endl;
+                outputFile << "TYPE : OP" << std::endl;
+                outputFile << "DIMENSION : " << durations_matrix.values.size() <<  std::endl;
+                outputFile << "COST_LIMIT : " << 40*60 << std::endl;
+                outputFile << "EDGE_WEIGHT_TYPE : EXPLICIT" << std::endl;
+                outputFile << "EDGE_WEIGHT_FORMAT : LOWER_DIAG_ROW" << std::endl;
+                outputFile << "NODE_COORD_TYPE : NO_COORDS" << std::endl;
+                outputFile << "DISPLAY_DATA_TYPE : NO_DISPLAY" << std::endl;
+                outputFile << "EDGE_WEIGHT_SECTION" << std::endl;
+                for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
+                    auto& durations_array = durations_matrix.values.at(indexFrom);
+                    auto& durations = durations_array.get<json::Array>();
+                    bool iterates_first_value = true;
+//                    outputFile << "D,  ";
 
-                for (size_t indexTo = 0; indexTo < durations.values.size(); indexTo++) {
-                    auto duration_value = durations.values[indexTo];
-                    auto duration = duration_value.get<json::Number>();
-                    double durationInMinutes = duration.value * dampeningFactor / 60.0;
-                    if (work_mode == WorkMode::workdrive) {
-                        durationInMinutes += workDurationMap.at(jobRowToId.at(indexTo));
+                    for (size_t indexTo = 0; indexTo <= indexFrom; indexTo++) {
+                        auto duration_value = durations.values[indexTo];
+                        auto duration = duration_value.get<json::Number>();
+                        double durationInMinutes = duration.value * dampeningFactor / 60.0;
+                        durationInMinutes += workDurationMap.at(jobRowToId.at(indexTo)) / 2.0;
+                        durationInMinutes += workDurationMap.at(jobRowToId.at(indexFrom)) / 2.0;
+
+                        if (!iterates_first_value) {
+                            outputFile << " ";
+                        }
+                        outputFile << std::lround(durationInMinutes);
+                        iterates_first_value = false;
                     }
-                    if (!iterates_first_value) {
-                        outputFile << ",\t";
-                    }
-                    outputFile << std::lround(durationInMinutes);
-                    iterates_first_value = false;
+                    outputFile << '\n';
                 }
-                outputFile << ',' << '\n';
+                outputFile << "NODE_SCORE_SECTION" << std::endl;
+                for (size_t i = 0; i < durations_matrix.values.size(); i++) {
+                    outputFile << i + 1 << " " << score1Map.at(jobRowToId.at(i)) << std::endl;
+                }
+
+                outputFile << "EOF" << std::endl;                
+            }
+            else {
+                for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
+                    auto& durations_array = durations_matrix.values.at(indexFrom);
+                    auto& durations = durations_array.get<json::Array>();
+                    bool iterates_first_value = true;
+                    outputFile << "D,  ";
+
+                    for (size_t indexTo = 0; indexTo < durations.values.size(); indexTo++) {
+                        auto duration_value = durations.values[indexTo];
+                        auto duration = duration_value.get<json::Number>();
+                        double durationInMinutes = duration.value * dampeningFactor / 60.0;
+                        if (work_mode == WorkMode::workdrive) {
+                            durationInMinutes += workDurationMap.at(jobRowToId.at(indexTo));
+                        }
+                        if (!iterates_first_value) {
+                            outputFile << ",\t";
+                        }
+                        outputFile << std::lround(durationInMinutes);
+                        iterates_first_value = false;
+                    }
+                    outputFile << ',' << '\n';
+                }
             }
         }
         return 0;
