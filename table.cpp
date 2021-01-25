@@ -22,7 +22,8 @@ enum class WorkMode {
     drive,
     workdrive,
     result,
-    workdrivesymc
+    workdrivesymc,
+    resultsymc
 };
 
 WorkMode parse_work_mode(const std::string& mode) {
@@ -38,7 +39,10 @@ WorkMode parse_work_mode(const std::string& mode) {
     if (mode == "workdrivesymc") {
         return WorkMode::workdrivesymc;
     }
-    throw std::runtime_error("Unknown mode: " + mode + ". Supported modes: drive, workdrive, result, workdrivesymc.");
+    if (mode == "resultsymc") {
+        return WorkMode::resultsymc;
+    }
+    throw std::runtime_error("Unknown mode: " + mode + ". Supported modes: drive, workdrive, result, workdrivesymc, resultsymc.");
 }
 
 int main(int argc, const char* argv[])
@@ -50,6 +54,7 @@ int main(int argc, const char* argv[])
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT [drive | workdrive] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT result INPUT-RESULT-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT workdrivesymc [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
+            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Example: " << argv[0] << " " << "input.txt output.result.txt result input.result.txt 1.0 map_data\\germany-latest.osrm " << "\n";
             return EXIT_FAILURE;
         }
@@ -61,9 +66,9 @@ int main(int argc, const char* argv[])
 
         WorkMode work_mode = argc < 4 ? WorkMode::drive : parse_work_mode(argv[3]);
 
-        int arg_offset = work_mode == WorkMode::result ? 1 : 0;
+        int arg_offset = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc ? 1 : 0;
 
-        std::string resultInputFilename = work_mode == WorkMode::result ? argv[4] : std::string();
+        std::string resultInputFilename = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc ? argv[4] : std::string();
 
 
         std::string pathToOsrmFile = argc < (6 + arg_offset) ? "map_data\\germany-latest.osrm" : argv[5 + arg_offset];
@@ -95,7 +100,7 @@ int main(int argc, const char* argv[])
         std::string line;
         while (std::getline(inputFile, line)) {
             {
-                if (work_mode != WorkMode::result && work_mode != WorkMode::workdrivesymc) {
+                if (work_mode != WorkMode::result && work_mode != WorkMode::workdrivesymc && work_mode != WorkMode::resultsymc) {
                     outputFile << line << "\n";
                 }
 
@@ -107,6 +112,7 @@ int main(int argc, const char* argv[])
                     continue;
                 }
             }
+
             std::istringstream lineStream(line);
             char separator1;
             char separator2;
@@ -155,9 +161,10 @@ int main(int argc, const char* argv[])
         // Response is in JSON format
         engine::api::ResultT result = json::Object();
 
-        const auto status = osrm.Table(params, result);
-
         auto& json_result = result.get<json::Object>();
+
+        //todo move out of scope uninitialized values
+        const auto status = osrm.Table(params, result);
 
         if (status == Status::Error)
         {
@@ -272,26 +279,63 @@ int main(int argc, const char* argv[])
                 outputFile << "EOF" << std::endl;                
             }
             else {
-                for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
-                    auto& durations_array = durations_matrix.values.at(indexFrom);
-                    auto& durations = durations_array.get<json::Array>();
-                    bool iterates_first_value = true;
-                    outputFile << "D,  ";
+                if (work_mode != WorkMode::resultsymc) {
+                    for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
+                        auto& durations_array = durations_matrix.values.at(indexFrom);
+                        auto& durations = durations_array.get<json::Array>();
+                        bool iterates_first_value = true;
+                        outputFile << "D,  ";
 
-                    for (size_t indexTo = 0; indexTo < durations.values.size(); indexTo++) {
-                        auto duration_value = durations.values[indexTo];
-                        auto duration = duration_value.get<json::Number>();
-                        double durationInMinutes = duration.value * dampeningFactor / 60.0;
-                        if (work_mode == WorkMode::workdrive) {
-                            durationInMinutes += workDurationMap.at(jobRowToId.at(indexTo));
+                        for (size_t indexTo = 0; indexTo < durations.values.size(); indexTo++) {
+                            auto duration_value = durations.values[indexTo];
+                            auto duration = duration_value.get<json::Number>();
+                            double durationInMinutes = duration.value * dampeningFactor / 60.0;
+                            if (work_mode == WorkMode::workdrive) {
+                                durationInMinutes += workDurationMap.at(jobRowToId.at(indexTo));
+                            }
+                            if (!iterates_first_value) {
+                                outputFile << ",\t";
+                            }
+                            outputFile << std::lround(durationInMinutes);
+                            iterates_first_value = false;
                         }
-                        if (!iterates_first_value) {
-                            outputFile << ",\t";
-                        }
-                        outputFile << std::lround(durationInMinutes);
-                        iterates_first_value = false;
+                        outputFile << ',' << '\n';
                     }
-                    outputFile << ',' << '\n';
+                }
+                else { //resultsymc
+                    std::ifstream resultInputFile(resultInputFilename);
+                    if (!resultInputFile.is_open()) {
+                        throw std::runtime_error("error opening input file " + resultInputFilename);
+                    }
+
+                    std::string line;
+                    do {
+                        std::getline(resultInputFile, line);
+                        std::cout << "SKIPPED result input line: " << line << std::endl;
+                    } while (line != "NODE_SEQUENCE_SECTION");
+                    //output results file
+                    std::string stopListLine;
+                    int i = 0;
+                    while (true) {
+                        std::getline(resultInputFile, line);
+                        if (line == "-1") {
+                            break;
+                        }
+                        std::istringstream lineStream(line);
+                        int row_index_one_based;
+                        lineStream >> row_index_one_based;
+                        int row_index = row_index_one_based - 1;
+                        int station_id = jobRowToId.at(row_index);
+                        outputFile << i;
+                        outputFile << ",";
+                        outputFile << params.coordinates.at(row_index).lat.__value/1000000.0;
+                        outputFile << ",";
+                        outputFile << params.coordinates.at(row_index).lon.__value/1000000.0;
+                        outputFile << std::endl;
+                        i++;
+//                        outputFile << station_id << std::endl;
+                    }
+
                 }
             }
         }
