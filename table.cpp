@@ -316,6 +316,7 @@ int main(int argc, const char* argv[])
                     //output results file
                     std::string stopListLine;
                     int i = 0;
+                    outputFile << "index,lattitude,longitude" << std::endl;
                     while (true) {
                         std::getline(resultInputFile, line);
                         if (line == "-1") {
