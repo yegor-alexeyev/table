@@ -53,7 +53,7 @@ int main(int argc, const char* argv[])
         {
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT [drive | workdrive] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT result INPUT-RESULT-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
-            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT workdrivesymc [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
+            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT workdrivesymc [worktime-limit-in-minutes=2400] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Example: " << argv[0] << " " << "input.txt output.result.txt result input.result.txt 1.0 map_data\\germany-latest.osrm " << "\n";
             return EXIT_FAILURE;
@@ -66,9 +66,14 @@ int main(int argc, const char* argv[])
 
         WorkMode work_mode = argc < 4 ? WorkMode::drive : parse_work_mode(argv[3]);
 
-        int arg_offset = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc ? 1 : 0;
+        int arg_offset = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc || work_mode == WorkMode::workdrivesymc ? 1 : 0;
 
         std::string resultInputFilename = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc ? argv[4] : std::string();
+
+        std::string worktime_limit_in_minutes = "2400";
+        if (work_mode == WorkMode::workdrivesymc && argc >= 5 ) {
+            worktime_limit_in_minutes = argv[4];
+        }
 
 
         std::string pathToOsrmFile = argc < (6 + arg_offset) ? "map_data/germany-latest.osrm" : argv[5 + arg_offset];
@@ -244,7 +249,7 @@ int main(int argc, const char* argv[])
                 outputFile << "COMMENT : based on input from "  << inputFilename << std::endl;
                 outputFile << "TYPE : OP" << std::endl;
                 outputFile << "DIMENSION : " << durations_matrix.values.size() <<  std::endl;
-                outputFile << "COST_LIMIT : " << 40*60 << std::endl;
+                outputFile << "COST_LIMIT : " << worktime_limit_in_minutes << std::endl;
                 outputFile << "EDGE_WEIGHT_TYPE : EXPLICIT" << std::endl;
                 outputFile << "EDGE_WEIGHT_FORMAT : LOWER_DIAG_ROW" << std::endl;
                 outputFile << "NODE_COORD_TYPE : NO_COORDS" << std::endl;
