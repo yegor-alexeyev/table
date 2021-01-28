@@ -17,6 +17,8 @@
 #include <utility>
 #include <iomanip>
 #include <cstdlib>
+#include <unordered_map>
+#include <unordered_set>
 
 enum class WorkMode {
     drive,
@@ -54,7 +56,7 @@ int main(int argc, const char* argv[])
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT [drive | workdrive] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT result INPUT-RESULT-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT workdrivesymc [worktime-limit-in-minutes=2400] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
-            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
+            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE [OUTPUT-JS-DEFINITIONS-FILENAME]" << "\n";
             std::cerr << "Example: " << argv[0] << " " << "input.txt output.result.txt result input.result.txt 1.0 map_data\\germany-latest.osrm " << "\n";
             return EXIT_FAILURE;
         }
@@ -75,18 +77,10 @@ int main(int argc, const char* argv[])
             worktime_limit_in_minutes = argv[4];
         }
 
-
-        std::string pathToOsrmFile = argc < (6 + arg_offset) ? "map_data/germany-latest.osrm" : argv[5 + arg_offset];
-
-        double dampeningFactor = argc < (5 + arg_offset) ? 1.0 : std::stod(argv[4 + arg_offset]);
-
-
-
         std::ifstream inputFile(inputFilename);
         if (!inputFile.is_open()) {
             throw std::runtime_error("error opening input file " + inputFilename);
         }
-
 
         using namespace osrm;
         TableParameters params;
@@ -145,6 +139,7 @@ int main(int argc, const char* argv[])
         }
 
         if (work_mode == WorkMode::resultsymc) {
+
             std::ifstream resultInputFile(resultInputFilename);
             if (!resultInputFile.is_open()) {
                 throw std::runtime_error("error opening input file " + resultInputFilename);
@@ -156,6 +151,10 @@ int main(int argc, const char* argv[])
                 std::cout << "SKIPPED result input line: " << line << std::endl;
             } while (line != "NODE_SEQUENCE_SECTION");
             //output results file
+
+
+            std::unordered_set<int> selectedJobIds; 
+
             std::string stopListLine;
             int i = 0;
             outputFile << "index,lattitude,longitude" << std::endl;
@@ -169,6 +168,7 @@ int main(int argc, const char* argv[])
                 lineStream >> row_index_one_based;
                 int row_index = row_index_one_based - 1;
                 int station_id = jobRowToId.at(row_index);
+                selectedJobIds.insert(station_id);
                 outputFile << i;
                 outputFile << ",";
                 outputFile << params.coordinates.at(row_index).lat.__value/1000000.0;
@@ -178,8 +178,66 @@ int main(int argc, const char* argv[])
                 i++;
 //                        outputFile << station_id << std::endl;
             }
+
+            if (argc >= 6) {
+                const std::string js_definitions_filename = argv[5];
+
+                std::ofstream js_file(js_definitions_filename);
+                if (!js_file.is_open()) {
+                    throw std::runtime_error("error writing is definitions file " + js_definitions_filename);
+                }
+
+                js_file << "const features = [" << std::endl;
+                for (size_t i = 0; i < jobRowToId.size(); i++) {
+                    const double latitude = params.coordinates.at(i).lat.__value/1000000.0;
+                    const double longitude = params.coordinates.at(i).lon.__value/1000000.0;
+                    const int job_id = jobRowToId.at(i);
+                    const double priority = score1Map.at(job_id);
+                    const int duration = workDurationMap.at(job_id);
+                    std::string type = selectedJobIds.count(job_id) ? "active" : "inactive";
+                    int size2;
+                    if ( job_id == 0 || job_id == 1) {
+                        type = "home";
+                        size2 = 20;
+                    } else {
+                        if (duration < 1) {
+                            size2 = 40;
+                        } else {
+                            size2 = std::lround(std::sqrt(priority/duration)*8.0);
+                        }
+                        if (size2 > 40) {
+                            size2 = 40;
+                        }
+                        if (size2 < 6) {
+                            size2 = 6;
+                        }
+                    }
+                    if ( i != 0) {
+                        js_file << "," << std::endl;
+                    }
+                    js_file << "\t{ ";
+                    js_file << "latitude: "     << latitude                        << ", ";
+                    js_file << "longitude: "     << longitude                        << ", ";
+                    js_file << "type: \""     << type                        << "\", ";
+                    js_file << "title: \""    << job_id               << "\", ";
+                    js_file << "priority: " << priority << ", ";
+                    js_file << "duration: " << duration << ", ";
+                    js_file << "size1: " << size2 << ", ";
+                    js_file << "size2: " << size2 << "";
+                    js_file << " }";
+                }
+                js_file << std::endl << "];" << std::endl;
+
+
+            }
             return 0;
         }
+
+
+        std::string pathToOsrmFile = argc < (6 + arg_offset) ? "map_data/germany-latest.osrm" : argv[5 + arg_offset];
+
+        double dampeningFactor = argc < (5 + arg_offset) ? 1.0 : std::stod(argv[4 + arg_offset]);
+
 
         // Configure based on a .osrm base path, and no datasets in shared mem from osrm-datastore
         EngineConfig config;
@@ -276,8 +334,6 @@ int main(int argc, const char* argv[])
                 }
                 outputFile << jobIds[i] << ";" << drivingTimeFromPreviousJob << ";" << workDurationMap.at(jobIds[i]) << ";" << "\n";
             }
-
-
         }
         else {
             if (work_mode == WorkMode::workdrivesymc) {
