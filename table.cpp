@@ -71,7 +71,7 @@ int main(int argc, const char* argv[])
         std::string resultInputFilename = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc ? argv[4] : std::string();
 
 
-        std::string pathToOsrmFile = argc < (6 + arg_offset) ? "map_data\\germany-latest.osrm" : argv[5 + arg_offset];
+        std::string pathToOsrmFile = argc < (6 + arg_offset) ? "map_data/germany-latest.osrm" : argv[5 + arg_offset];
 
         double dampeningFactor = argc < (5 + arg_offset) ? 1.0 : std::stod(argv[4 + arg_offset]);
 
