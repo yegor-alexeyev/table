@@ -144,6 +144,42 @@ int main(int argc, const char* argv[])
             score1Map[uniqueJobID] = score1;
         }
 
+        if (work_mode == WorkMode::resultsymc) {
+            std::ifstream resultInputFile(resultInputFilename);
+            if (!resultInputFile.is_open()) {
+                throw std::runtime_error("error opening input file " + resultInputFilename);
+            }
+
+            std::string line;
+            do {
+                std::getline(resultInputFile, line);
+                std::cout << "SKIPPED result input line: " << line << std::endl;
+            } while (line != "NODE_SEQUENCE_SECTION");
+            //output results file
+            std::string stopListLine;
+            int i = 0;
+            outputFile << "index,lattitude,longitude" << std::endl;
+            while (true) {
+                std::getline(resultInputFile, line);
+                if (line == "-1") {
+                    break;
+                }
+                std::istringstream lineStream(line);
+                int row_index_one_based;
+                lineStream >> row_index_one_based;
+                int row_index = row_index_one_based - 1;
+                int station_id = jobRowToId.at(row_index);
+                outputFile << i;
+                outputFile << ",";
+                outputFile << params.coordinates.at(row_index).lat.__value/1000000.0;
+                outputFile << ",";
+                outputFile << params.coordinates.at(row_index).lon.__value/1000000.0;
+                outputFile << std::endl;
+                i++;
+//                        outputFile << station_id << std::endl;
+            }
+            return 0;
+        }
 
         // Configure based on a .osrm base path, and no datasets in shared mem from osrm-datastore
         EngineConfig config;
@@ -284,64 +320,26 @@ int main(int argc, const char* argv[])
                 outputFile << "EOF" << std::endl;                
             }
             else {
-                if (work_mode != WorkMode::resultsymc) {
-                    for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
-                        auto& durations_array = durations_matrix.values.at(indexFrom);
-                        auto& durations = durations_array.get<json::Array>();
-                        bool iterates_first_value = true;
-                        outputFile << "D,  ";
+                for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
+                    auto& durations_array = durations_matrix.values.at(indexFrom);
+                    auto& durations = durations_array.get<json::Array>();
+                    bool iterates_first_value = true;
+                    outputFile << "D,  ";
 
-                        for (size_t indexTo = 0; indexTo < durations.values.size(); indexTo++) {
-                            auto duration_value = durations.values[indexTo];
-                            auto duration = duration_value.get<json::Number>();
-                            double durationInMinutes = duration.value * dampeningFactor / 60.0;
-                            if (work_mode == WorkMode::workdrive) {
-                                durationInMinutes += workDurationMap.at(jobRowToId.at(indexTo));
-                            }
-                            if (!iterates_first_value) {
-                                outputFile << ",\t";
-                            }
-                            outputFile << std::lround(durationInMinutes);
-                            iterates_first_value = false;
+                    for (size_t indexTo = 0; indexTo < durations.values.size(); indexTo++) {
+                        auto duration_value = durations.values[indexTo];
+                        auto duration = duration_value.get<json::Number>();
+                        double durationInMinutes = duration.value * dampeningFactor / 60.0;
+                        if (work_mode == WorkMode::workdrive) {
+                            durationInMinutes += workDurationMap.at(jobRowToId.at(indexTo));
                         }
-                        outputFile << ',' << '\n';
-                    }
-                }
-                else { //resultsymc
-                    std::ifstream resultInputFile(resultInputFilename);
-                    if (!resultInputFile.is_open()) {
-                        throw std::runtime_error("error opening input file " + resultInputFilename);
-                    }
-
-                    std::string line;
-                    do {
-                        std::getline(resultInputFile, line);
-                        std::cout << "SKIPPED result input line: " << line << std::endl;
-                    } while (line != "NODE_SEQUENCE_SECTION");
-                    //output results file
-                    std::string stopListLine;
-                    int i = 0;
-                    outputFile << "index,lattitude,longitude" << std::endl;
-                    while (true) {
-                        std::getline(resultInputFile, line);
-                        if (line == "-1") {
-                            break;
+                        if (!iterates_first_value) {
+                            outputFile << ",\t";
                         }
-                        std::istringstream lineStream(line);
-                        int row_index_one_based;
-                        lineStream >> row_index_one_based;
-                        int row_index = row_index_one_based - 1;
-                        int station_id = jobRowToId.at(row_index);
-                        outputFile << i;
-                        outputFile << ",";
-                        outputFile << params.coordinates.at(row_index).lat.__value/1000000.0;
-                        outputFile << ",";
-                        outputFile << params.coordinates.at(row_index).lon.__value/1000000.0;
-                        outputFile << std::endl;
-                        i++;
-//                        outputFile << station_id << std::endl;
+                        outputFile << std::lround(durationInMinutes);
+                        iterates_first_value = false;
                     }
-
+                    outputFile << ',' << '\n';
                 }
             }
         }
