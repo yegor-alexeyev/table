@@ -58,6 +58,7 @@ int main(int argc, const char* argv[])
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT workdrivesymc [worktime-limit-in-minutes=2400] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE [OUTPUT-JS-DEFINITIONS-FILENAME]" << "\n";
             std::cerr << "Example: " << argv[0] << " " << "input.txt output.result.txt result input.result.txt 1.0 map_data\\germany-latest.osrm " << "\n";
+            std::cerr << "Example: " << argv[0] << " " << "input.txt output.txt resultsymc solver.o-148535.sol ..\\custom-markers-reduced\\features.js " << "\n";
             return EXIT_FAILURE;
         }
 
