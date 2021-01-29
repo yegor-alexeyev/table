@@ -154,7 +154,7 @@ int main(int argc, const char* argv[])
             //output results file
 
 
-            std::unordered_set<int> selectedJobIds; 
+            std::vector<int> selectedJobsRowIndex; 
 
             std::string stopListLine;
             int i = 0;
@@ -169,7 +169,7 @@ int main(int argc, const char* argv[])
                 lineStream >> row_index_one_based;
                 int row_index = row_index_one_based - 1;
                 int station_id = jobRowToId.at(row_index);
-                selectedJobIds.insert(station_id);
+                selectedJobsRowIndex.push_back(row_index);
                 outputFile << i;
                 outputFile << ",";
                 outputFile << params.coordinates.at(row_index).lat.__value/1000000.0;
@@ -188,6 +188,8 @@ int main(int argc, const char* argv[])
                     throw std::runtime_error("error writing is definitions file " + js_definitions_filename);
                 }
 
+                js_file << std::fixed << std::setprecision(7);
+
                 js_file << "const features = [" << std::endl;
                 for (size_t i = 0; i < jobRowToId.size(); i++) {
                     const double latitude = params.coordinates.at(i).lat.__value/1000000.0;
@@ -195,7 +197,10 @@ int main(int argc, const char* argv[])
                     const int job_id = jobRowToId.at(i);
                     const double priority = score1Map.at(job_id);
                     const int duration = workDurationMap.at(job_id);
-                    std::string type = selectedJobIds.count(job_id) ? "active" : "inactive";
+
+                    const bool is_selected = std::find(selectedJobsRowIndex.begin(), selectedJobsRowIndex.end(), i) != selectedJobsRowIndex.end();
+
+                    std::string type =  is_selected ? "active" : "inactive";
                     int size2;
                     if ( job_id == 0 || job_id == 1) {
                         type = "home";
@@ -216,6 +221,7 @@ int main(int argc, const char* argv[])
                     if ( i != 0) {
                         js_file << "," << std::endl;
                     }
+
                     js_file << "\t{ ";
                     js_file << "latitude: "     << latitude                        << ", ";
                     js_file << "longitude: "     << longitude                        << ", ";
@@ -229,6 +235,24 @@ int main(int argc, const char* argv[])
                 }
                 js_file << std::endl << "];" << std::endl;
 
+                js_file <<  std::endl;
+
+                js_file << "const triangleCoords2 = [" << std::endl;
+                for (size_t i = 0; i < selectedJobsRowIndex.size(); i++) {
+                    const double latitude = params.coordinates.at(selectedJobsRowIndex[i]).lat.__value/1000000.0;
+                    const double longitude = params.coordinates.at(selectedJobsRowIndex[i]).lon.__value/1000000.0;
+                    if ( i != 0) {
+                        js_file << "," << std::endl;
+                    }
+                    js_file << "\t{ ";
+
+                    js_file << "lat: "     << latitude                        << ", ";
+                    js_file << "lng: "     << longitude                        << "";
+
+                    js_file << " }";
+
+                }
+                js_file << std::endl << "];" << std::endl;
 
             }
             return 0;
