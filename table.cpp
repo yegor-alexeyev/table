@@ -191,6 +191,30 @@ int main(int argc, const char* argv[])
                 js_file << std::fixed << std::setprecision(7);
 
                 js_file << "const features = [" << std::endl;
+                double min_size = 15.0;
+                double max_size = 16.0;
+
+
+                for (size_t i = 0; i < jobRowToId.size(); i++) {
+                    const int job_id = jobRowToId.at(i);
+                    if ( job_id == 0 || job_id == 1) {
+                        continue;
+                    }
+
+                    const double priority = score1Map.at(job_id);
+                    const int duration = workDurationMap.at(job_id);
+                    if (duration < 1) {
+                        continue;
+                    }
+                    double size2_double = std::sqrt(priority/duration)*8.0;
+                    if (size2_double < min_size) {
+                        min_size = size2_double;
+                    }
+                    if (size2_double > max_size) {
+                        max_size = size2_double;
+                    }
+                }
+                std::cout << std::endl << "min " << min_size << " " << "max " << max_size << std::endl;
                 for (size_t i = 0; i < jobRowToId.size(); i++) {
                     const double latitude = params.coordinates.at(i).lat.__value/1000000.0;
                     const double longitude = params.coordinates.at(i).lon.__value/1000000.0;
@@ -201,21 +225,26 @@ int main(int argc, const char* argv[])
                     const bool is_selected = std::find(selectedJobsRowIndex.begin(), selectedJobsRowIndex.end(), i) != selectedJobsRowIndex.end();
 
                     std::string type =  is_selected ? "active" : "inactive";
+                    int size1;
                     int size2;
-                    if ( job_id == 0 || job_id == 1) {
+                    if (job_id == 0 || job_id == 1) {
                         type = "home";
+                        size1 = 20;
                         size2 = 20;
                     } else {
                         if (duration < 1) {
-                            size2 = 40;
+                            size1 = 30;
+                            size2 = 30;
                         } else {
-                            size2 = std::lround(std::sqrt(priority/duration)*8.0);
+                            double size2_double = std::sqrt(priority/duration)*8.0;
+                            size1 = std::lround((size2_double - min_size)*(30.0 - 10.0)/(max_size - min_size) + 10.0);
+                            size2 = std::lround(size2_double);
                         }
-                        if (size2 > 40) {
-                            size2 = 40;
+                        if (size2 > 30) {
+                            size2 = 30;
                         }
-                        if (size2 < 6) {
-                            size2 = 6;
+                        if (size2 < 10) {
+                            size2 = 10;
                         }
                     }
                     if ( i != 0) {
@@ -229,7 +258,7 @@ int main(int argc, const char* argv[])
                     js_file << "title: \""    << job_id               << "\", ";
                     js_file << "priority: " << priority << ", ";
                     js_file << "duration: " << duration << ", ";
-                    js_file << "size1: " << size2 << ", ";
+                    js_file << "size1: " << size1 << ", ";
                     js_file << "size2: " << size2 << "";
                     js_file << " }";
                 }
