@@ -56,9 +56,9 @@ int main(int argc, const char* argv[])
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT [drive | workdrive] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT result INPUT-RESULT-FILE [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
             std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT workdrivesymc [worktime-limit-in-minutes=2400] [dampening-factor=1.0] [path-to-osrm-file=map_data\\germany-latest.osrm] " << "\n";
-            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE [OUTPUT-JS-DEFINITIONS-FILENAME]" << "\n";
+            std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE DISTANCE-MATRIX-INPUT-FILE [OUTPUT-JS-DEFINITIONS-FILENAME]" << "\n";
             std::cerr << "Example: " << argv[0] << " " << "input.txt output.result.txt result input.result.txt 1.0 map_data\\germany-latest.osrm " << "\n";
-            std::cerr << "Example: " << argv[0] << " " << "input.txt output.txt resultsymc solver.o-148535.sol ..\\custom-markers-reduced\\features.js " << "\n";
+            std::cerr << "Example: " << argv[0] << " " << "input.txt output.txt resultsymc solver.o-148535.sol workdrivesymc.out.txt ..\\custom-markers-reduced\\features.js " << "\n";
             return EXIT_FAILURE;
         }
 
@@ -70,8 +70,6 @@ int main(int argc, const char* argv[])
         WorkMode work_mode = argc < 4 ? WorkMode::drive : parse_work_mode(argv[3]);
 
         int arg_offset = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc || work_mode == WorkMode::workdrivesymc ? 1 : 0;
-
-        std::string resultInputFilename = work_mode == WorkMode::result || work_mode == WorkMode::resultsymc ? argv[4] : std::string();
 
         std::string worktime_limit_in_minutes = "2400";
         if (work_mode == WorkMode::workdrivesymc && argc >= 5 ) {
@@ -140,10 +138,47 @@ int main(int argc, const char* argv[])
         }
 
         if (work_mode == WorkMode::resultsymc) {
+            if (argc < 6) {
+                std::cerr << "Error, an nsufficient number of arguments were supplied for the resultsymc mode" << '\n';
+                std::cerr << "Usage(order of arguments is important): " << argv[0] << " " << "INPUT OUTPUT resultsymc OP-SOLVER-SOLUTION-FILE DISTANCE-MATRIX-INPUT-FILE [OUTPUT-JS-DEFINITIONS-FILENAME]" << "\n";
+                std::cerr << "Example: " << argv[0] << " " << "input.txt output.txt resultsymc solver.o-148535.sol workdrivesymc.out.txt ..\\custom-markers-reduced\\features.js " << "\n";
+                return EXIT_FAILURE;
+            }
 
+            const std::string matrixInputFilename = argv[5];
+            std::ifstream matrixInputFile(matrixInputFilename);
+            if (!matrixInputFile.is_open()) {
+                throw std::runtime_error("error opening distance matrix input file " + matrixInputFilename);
+            }
+            std::vector< std::vector<int> > dampedDrivingTimeFromToMinutes;
+            do {
+                std::getline(matrixInputFile, line);
+                std::cout << "SKIPPED distance matrix input line: " << line << std::endl;
+            } while (line != "EDGE_WEIGHT_SECTION");
+
+
+            for (size_t row = 0; row < jobRowToId.size(); row++) {
+                std::string matrixRowLine;
+                std::getline(matrixInputFile, matrixRowLine);
+
+                std::istringstream lineStream(matrixRowLine);
+                std::vector<int> matrixRow;
+                std::copy(std::istream_iterator<int>(lineStream), std::istream_iterator<int>(), std::back_inserter(matrixRow));
+
+                for (size_t column = 0; column < matrixRow.size(); column++) {
+                    const double workFromDuration = workDurationMap.at(jobRowToId.at(row));
+                    const double workToDuration = workDurationMap.at(jobRowToId.at(column));
+                    matrixRow[column] -= workFromDuration/2.0;
+                    matrixRow[column] -= workToDuration/2.0;
+                }
+
+                dampedDrivingTimeFromToMinutes.push_back(matrixRow);
+            }
+
+            const std::string resultInputFilename = argv[4];
             std::ifstream resultInputFile(resultInputFilename);
             if (!resultInputFile.is_open()) {
-                throw std::runtime_error("error opening input file " + resultInputFilename);
+                throw std::runtime_error("error opening result input file " + resultInputFilename);
             }
 
             std::string line;
@@ -158,7 +193,8 @@ int main(int argc, const char* argv[])
 
             std::string stopListLine;
             int i = 0;
-            outputFile << "index,lattitude,longitude" << std::endl;
+            double totalScore1 = 0;
+            double totalWorkDuration = 0;
             while (true) {
                 std::getline(resultInputFile, line);
                 if (line == "-1") {
@@ -170,18 +206,34 @@ int main(int argc, const char* argv[])
                 int row_index = row_index_one_based - 1;
                 int station_id = jobRowToId.at(row_index);
                 selectedJobsRowIndex.push_back(row_index);
-                outputFile << i;
-                outputFile << ",";
-                outputFile << params.coordinates.at(row_index).lat.__value/1000000.0;
-                outputFile << ",";
-                outputFile << params.coordinates.at(row_index).lon.__value/1000000.0;
-                outputFile << std::endl;
+                totalScore1 += score1Map.at(station_id);
+                totalWorkDuration += workDurationMap.at(station_id);
+                outputFile << station_id;
+                outputFile << " ";
                 i++;
-//                        outputFile << station_id << std::endl;
+            }
+            outputFile << "1 "; //TODO CHECK: final_station_id=1  is consistent with java solver output, but really there should be 0
+            outputFile << '\n';
+            outputFile << totalScore1 << '\n';
+            outputFile << totalWorkDuration << '\n';
+
+            double dampedDrivingTimeSumMinutes = 0;
+            for (size_t i = 0; i < selectedJobsRowIndex.size(); i++) {
+                int from_station_row_index = selectedJobsRowIndex[i];
+                int to_station_row_index = i == selectedJobsRowIndex.size() - 1 ? selectedJobsRowIndex.front() : selectedJobsRowIndex[i+1];
+
+                if (from_station_row_index < to_station_row_index) { // hack because dampedDrivingTimeFromToMinutes contains triangular matrix form
+                    std::swap(from_station_row_index, to_station_row_index);
+                }
+
+                dampedDrivingTimeSumMinutes += dampedDrivingTimeFromToMinutes.at(from_station_row_index).at(to_station_row_index);
             }
 
-            if (argc >= 6) {
-                const std::string js_definitions_filename = argv[5];
+            outputFile << std::lround(dampedDrivingTimeSumMinutes) << '\n';
+
+
+            if (argc >= 7) {
+                const std::string js_definitions_filename = argv[6];
 
                 std::ofstream js_file(js_definitions_filename);
                 if (!js_file.is_open()) {
@@ -329,6 +381,8 @@ int main(int argc, const char* argv[])
 
         const auto& durations_matrix = json_result.values["durations"].get<json::Array>();
         if (work_mode == WorkMode::result) {
+            std::string resultInputFilename = argv[4];
+
             std::unordered_map<int, std::unordered_map<int, double> > drivingTimeFromTo;
             for (size_t indexFrom = 0; indexFrom < durations_matrix.values.size(); indexFrom++) {
                 auto& durations_array = durations_matrix.values.at(indexFrom);
