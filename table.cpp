@@ -212,15 +212,21 @@ int main(int argc, const char* argv[])
                 outputFile << " ";
                 i++;
             }
-            outputFile << "1 "; //TODO CHECK: final_station_id=1  is consistent with java solver output, but really there should be 0
+
+
+            //TODO CHECK: final_station_id=1  is consistent with java solver output, but really there should be 0
+            selectedJobsRowIndex.push_back(1);
+            outputFile << "1 "; 
+
+
             outputFile << '\n';
             outputFile << totalScore1 << '\n';
             outputFile << totalWorkDuration << '\n';
 
             double dampedDrivingTimeSumMinutes = 0;
-            for (size_t i = 0; i < selectedJobsRowIndex.size(); i++) {
+            for (size_t i = 0; i < selectedJobsRowIndex.size() - 1; i++) {
                 int from_station_row_index = selectedJobsRowIndex[i];
-                int to_station_row_index = i == selectedJobsRowIndex.size() - 1 ? selectedJobsRowIndex.front() : selectedJobsRowIndex[i+1];
+                int to_station_row_index = selectedJobsRowIndex[i+1];
 
                 if (from_station_row_index < to_station_row_index) { // hack because dampedDrivingTimeFromToMinutes contains triangular matrix form
                     std::swap(from_station_row_index, to_station_row_index);
@@ -230,6 +236,24 @@ int main(int argc, const char* argv[])
             }
 
             outputFile << std::lround(dampedDrivingTimeSumMinutes) << '\n';
+
+            const double totalTimeHours = (totalWorkDuration + dampedDrivingTimeSumMinutes)/60.0;
+            outputFile << std::fixed << std::setprecision(1) << totalTimeHours << std::setprecision(0) << '\n';
+
+            for (size_t i = 0; i < selectedJobsRowIndex.size(); i++) {
+                int drivingTimeFromPreviousJob = 0;
+                const int job_id = jobRowToId.at(selectedJobsRowIndex[i]);
+                if (i != 0) {
+                    int previous_job_row_index = selectedJobsRowIndex[i - 1];
+                    int job_row_index = selectedJobsRowIndex[i];
+                    if (previous_job_row_index < job_row_index) {
+                        std::swap(previous_job_row_index, job_row_index);
+                    }
+
+                    drivingTimeFromPreviousJob = std::lround(dampedDrivingTimeFromToMinutes.at(previous_job_row_index).at(job_row_index));
+                }
+                outputFile << job_id << ";" << drivingTimeFromPreviousJob << ";" << workDurationMap.at(job_id) << ";" << "\n";
+            }
 
 
             if (argc >= 7) {
@@ -266,7 +290,7 @@ int main(int argc, const char* argv[])
                         max_size = size2_double;
                     }
                 }
-                std::cout << std::endl << "min " << min_size << " " << "max " << max_size << std::endl;
+
                 for (size_t i = 0; i < jobRowToId.size(); i++) {
                     const double latitude = params.coordinates.at(i).lat.__value/1000000.0;
                     const double longitude = params.coordinates.at(i).lon.__value/1000000.0;
