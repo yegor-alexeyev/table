@@ -256,6 +256,7 @@ int main(int argc, const char* argv[])
             }
 
 
+
             if (argc >= 7) {
                 const std::string js_definitions_filename = argv[6];
 
@@ -263,6 +264,14 @@ int main(int argc, const char* argv[])
                 if (!js_file.is_open()) {
                     throw std::runtime_error("error writing is definitions file " + js_definitions_filename);
                 }
+
+                js_file << "const tour_metrics = {";
+                js_file << "profit_sum: "     << totalScore1                        << ", ";
+                js_file << "worktime_sum_minutes: "     << totalWorkDuration                        << ", ";
+                js_file << "damped_drivng_time_sum_minutes: "     << std::lround(dampedDrivingTimeSumMinutes) << ", ";
+                js_file << "total_time_sum_hours: " << std::fixed << std::setprecision(1) << totalTimeHours << std::setprecision(0);
+                js_file << "}" << '\n';
+                js_file << '\n';
 
                 js_file << std::fixed << std::setprecision(7);
 
